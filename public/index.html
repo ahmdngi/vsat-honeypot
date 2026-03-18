@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Marine VSAT Terminal Console</title>
+    <link rel="stylesheet" href="/assets/styles.css">
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div>
+            <p class="eyebrow">Embedded Web Interface</p>
+            <h1>Marine VSAT Terminal</h1>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-link active" data-view="overview">Overview</button>
+          <button class="nav-link" data-view="antenna">Antenna</button>
+          <button class="nav-link" data-view="network">Network</button>
+          <button class="nav-link" data-view="events">Events</button>
+          <button class="nav-link" data-view="console">Console</button>
+        </nav>
+        <section class="meta-card">
+          <p class="meta-label">Management Endpoint</p>
+          <p class="mono">http://192.168.0.1</p>
+          <p class="meta-label">Access Mode</p>
+          <p class="mono" id="access-mode">Guest</p>
+          <p class="meta-label">Software</p>
+          <p class="mono">Terminal UI 2.4.18</p>
+        </section>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Ka-band Satellite Terminal</p>
+            <h2 id="page-title">Terminal Overview</h2>
+          </div>
+          <div class="topbar-actions">
+            <div class="clock" id="clock"></div>
+            <button class="ghost-button" id="logout-button" hidden>Logout</button>
+          </div>
+        </header>
+
+        <section class="toolbar">
+          <div class="toolbar-icons">
+            <span class="toolbar-icon ok">SYS</span>
+            <span class="toolbar-icon ok">NET</span>
+            <span class="toolbar-icon warn">RF</span>
+            <span class="toolbar-icon ok">GPS</span>
+          </div>
+          <div class="breadcrumb">Home / Status / <span id="breadcrumb-view">Overview</span></div>
+        </section>
+
+        <section class="connection-banner" id="connection-banner" hidden>
+          Telemetry unavailable. Start the local server and open this UI via `http://127.0.0.1:8080`.
+        </section>
+
+        <section class="login-card" id="login-card">
+          <div>
+            <p class="eyebrow">Operator Login</p>
+            <h3>Authenticate to modify settings</h3>
+          </div>
+          <form id="login-form">
+            <label>
+              Username
+              <input type="text" name="username" autocomplete="username" placeholder="operator">
+            </label>
+            <label>
+              Password
+              <input type="password" name="password" autocomplete="current-password" placeholder="********">
+            </label>
+            <button type="submit" class="primary-button">Open Session</button>
+          </form>
+          <p class="form-hint" id="login-status">Read-only telemetry is visible without an authenticated session.</p>
+        </section>
+
+        <section class="panel-grid view active" data-view-panel="overview">
+          <article class="panel hero-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Status Summary</p>
+                <h3 id="carrier-state">Tracking</h3>
+              </div>
+              <span class="status-pill live">LIVE</span>
+            </div>
+            <div class="kpi-grid">
+              <div class="kpi">
+                <span>Rx Level</span>
+                <strong id="rxDbm">-</strong>
+              </div>
+              <div class="kpi">
+                <span>Tx Power</span>
+                <strong id="txDbm">-</strong>
+              </div>
+              <div class="kpi">
+                <span>C/N0</span>
+                <strong id="cNo">-</strong>
+              </div>
+              <div class="kpi">
+                <span>BER</span>
+                <strong id="ber">-</strong>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Vessel Attitude</p>
+                <h3>Navigation Feed</h3>
+              </div>
+            </div>
+            <dl class="stat-list">
+              <div><dt>GPS</dt><dd id="gps">-</dd></div>
+              <div><dt>Heading</dt><dd id="heading">-</dd></div>
+              <div><dt>Pitch</dt><dd id="pitch">-</dd></div>
+              <div><dt>Roll</dt><dd id="roll">-</dd></div>
+            </dl>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Active Profile</p>
+                <h3 id="profileName">-</h3>
+              </div>
+            </div>
+            <dl class="stat-list">
+              <div><dt>Satellite</dt><dd id="satelliteName">-</dd></div>
+              <div><dt>Tracking</dt><dd id="trackingMode">-</dd></div>
+              <div><dt>Firmware</dt><dd id="firmware">-</dd></div>
+              <div><dt>Uptime</dt><dd id="uptime">-</dd></div>
+            </dl>
+          </article>
+
+          <article class="panel wide">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Terminal Modules</p>
+                <h3>Subsystem Health</h3>
+              </div>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Module</th>
+                  <th>Status</th>
+                  <th>Temp</th>
+                  <th>Azimuth</th>
+                  <th>Elevation</th>
+                </tr>
+              </thead>
+              <tbody id="terminal-body"></tbody>
+            </table>
+          </article>
+        </section>
+
+        <section class="panel-grid view" data-view-panel="antenna">
+          <article class="panel wide">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Antenna Profile</p>
+                <h3>Tracking Parameters</h3>
+              </div>
+            </div>
+            <form id="antenna-form" class="config-form">
+              <label>
+                Profile Name
+                <input name="profileName" type="text">
+              </label>
+              <label>
+                Satellite Name
+                <input name="satelliteName" type="text">
+              </label>
+              <label>
+                Tracking Mode
+                <select name="trackingMode">
+                  <option>Auto</option>
+                  <option>Manual</option>
+                  <option>Service</option>
+                </select>
+              </label>
+              <button type="submit" class="primary-button">Apply Antenna Profile</button>
+            </form>
+            <p class="form-hint" id="antenna-status">Profile writes are simulated in the decoy state store.</p>
+          </article>
+        </section>
+
+        <section class="panel-grid view" data-view-panel="network">
+          <article class="panel wide">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">WAN Settings</p>
+                <h3>Management Network</h3>
+              </div>
+            </div>
+            <form id="network-form" class="config-form">
+              <label>
+                Target IP
+                <input name="targetIp" type="text">
+              </label>
+              <label>
+                Netmask
+                <input name="mask" type="text">
+              </label>
+              <label>
+                Gateway
+                <input name="gateway" type="text">
+              </label>
+              <button type="submit" class="primary-button">Apply Network Settings</button>
+            </form>
+            <p class="form-hint" id="network-status">Writes are accepted and logged, but they do not touch any real device.</p>
+          </article>
+        </section>
+
+        <section class="panel-grid view" data-view-panel="events">
+          <article class="panel wide">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Alarm Register</p>
+                <h3>Recent Events</h3>
+              </div>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Level</th>
+                  <th>Code</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody id="events-body"></tbody>
+            </table>
+          </article>
+        </section>
+
+        <section class="panel-grid view" data-view-panel="console">
+          <article class="panel wide">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Maintenance Shell</p>
+                <h3>Operator Console</h3>
+              </div>
+            </div>
+            <form id="console-form" class="console-form">
+              <input id="console-command" type="text" placeholder="diag show rf-status">
+              <button type="submit" class="primary-button">Run</button>
+            </form>
+            <pre class="console-output" id="console-output">console ready: decoy execution mode
+</pre>
+            <table class="data-table compact">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Operator</th>
+                  <th>Action</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody id="command-body"></tbody>
+            </table>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
