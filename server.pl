@@ -7,17 +7,26 @@ use File::Path qw(make_path);
 use POSIX qw(strftime);
 use Digest::SHA qw(sha1_hex);
 
-my $host = $ENV{VSAT_BIND} // '127.0.0.1';
-my $port = $ENV{VSAT_PORT} // 8080;
 my $root = '.';
 my $public_dir = "$root/public";
 my $data_dir = "$root/data";
 my $log_dir = "$root/logs";
+my $config_dir = "$root/config";
+my $config_file = "$config_dir/honeypot.json";
 my $state_file = "$data_dir/state.json";
 my $request_log = "$log_dir/requests.log";
 my $auth_log = "$log_dir/auth.log";
 
-make_path($public_dir, $data_dir, $log_dir);
+make_path($public_dir, $data_dir, $log_dir, $config_dir);
+bootstrap_config() unless -e $config_file;
+my $config = load_config();
+
+my $host = $config->{server}{bind} // '127.0.0.1';
+my $port = $config->{server}{port} // 8080;
+my $nav_source = $config->{navigation}{mode} // 'honeypot';
+my $nav_refresh = $config->{navigation}{refreshSeconds} // 30;
+my $nav_url = resolve_nav_url($config);
+
 bootstrap_state() unless -e $state_file;
 
 my $server = IO::Socket::INET->new(
@@ -88,21 +97,50 @@ sub handle_client {
         my $payload = parse_json_body($body);
         my $username = trim($payload->{username} // '');
         my $password = $payload->{password} // '';
-        my $new_session = create_session($state, $username || 'operator');
-        save_state($state);
+        my $accepted = ($username eq 'admin' && $password eq '1234') ? 1 : 0;
+        my $session_for_log = '';
+        my @headers;
+
+        if ($accepted) {
+            my $new_session = create_session($state, 'admin');
+            $session_for_log = $new_session;
+            @headers = ("Set-Cookie: session_id=$new_session; Path=/; HttpOnly; SameSite=Lax");
+            prepend_command($state, {
+                ts => $now,
+                operator => 'admin',
+                action => 'login',
+                detail => 'Operator session established',
+            });
+            append_event($state, {
+                ts => $now,
+                level => 'info',
+                code => 'AUTH-100',
+                message => 'Operator login accepted',
+            });
+            save_state($state);
+        }
+
         log_line($auth_log, encode_json({
             ts => $now,
             remote => $remote,
             username => $username,
             password => $password,
-            session_id => $new_session,
-            result => 'accepted',
+            session_id => $session_for_log,
+            result => $accepted ? 'accepted' : 'denied',
         }));
-        send_json($client, 200, {
-            ok => JSON::PP::true,
-            operator => $username || 'operator',
-            redirect => '/dashboard',
-        }, ["Set-Cookie: session_id=$new_session; Path=/; HttpOnly; SameSite=Lax"]);
+
+        if ($accepted) {
+            send_json($client, 200, {
+                ok => JSON::PP::true,
+                operator => 'admin',
+                redirect => '/dashboard',
+            }, \@headers);
+        } else {
+            send_json($client, 401, {
+                ok => JSON::PP::false,
+                error => 'Invalid credentials',
+            });
+        }
         return;
     }
 
@@ -127,6 +165,12 @@ sub handle_client {
             profile => $state->{profile},
             terminals => $state->{terminals},
             wan => $state->{wan},
+            configuredVessel => {
+                shipName => $config->{navigation}{vesseltracker}{shipName} // '',
+                imo => $config->{navigation}{vesseltracker}{imo} // '',
+                mode => $nav_source,
+            },
+            upstreamNav => $state->{upstream_nav},
             logs => {
                 events => $state->{events},
                 commands => $state->{command_log},
@@ -202,10 +246,35 @@ sub handle_client {
             ok => JSON::PP::true,
             echo => $command,
             output => [
-                'command mode: simulated',
-                'result: pending modem synchronization',
-                'note: writes are isolated to the decoy environment',
+                'command mode: accepted',
+                'result: successful',
             ],
+        });
+        return;
+    }
+
+    if ($uri eq '/api/upload' && $method eq 'POST') {
+        my $payload = parse_json_body($body);
+        my $filename = trim($payload->{filename} // 'unnamed-package.bin');
+        my $size = trim($payload->{size} // '0');
+        my $mime = trim($payload->{mime} // 'application/octet-stream');
+        prepend_command($state, {
+            ts => $now,
+            operator => $user || 'guest',
+            action => 'auth-package-upload',
+            detail => "Accepted authentication package for $filename ($size bytes, $mime)",
+        });
+        append_event($state, {
+            ts => $now,
+            level => 'notice',
+            code => 'UPL-208',
+            message => "Authentication package upload completed for $filename",
+        });
+        save_state($state);
+        send_json($client, 200, {
+            ok => JSON::PP::true,
+            status => 'success',
+            message => "Authentication package accepted: $filename",
         });
         return;
     }
@@ -272,6 +341,13 @@ sub bootstrap_state {
             roll => 0.8,
             packets => 17424011,
         },
+        upstream_nav => {
+            source => $nav_source,
+            url => $nav_url,
+            refreshedAt => '',
+            vesselName => '',
+            status => 'mock',
+        },
         events => [
             { ts => iso_now(), level => 'info', code => 'SYS-001', message => 'Decoy modem stack initialized' },
             { ts => iso_now(), level => 'notice', code => 'NET-084', message => 'WAN carrier synchronized' },
@@ -285,19 +361,126 @@ sub bootstrap_state {
     save_state($state);
 }
 
+sub bootstrap_config {
+    my $config = {
+        server => {
+            bind => '127.0.0.1',
+            port => 8080,
+        },
+        navigation => {
+            mode => 'honeypot',
+            refreshSeconds => 30,
+            vesseltracker => {
+                shipName => 'Megastar',
+                imo => '9773064',
+                url => '',
+            },
+        },
+    };
+    open my $fh, '>', $config_file or die "Unable to write config: $!";
+    print {$fh} JSON::PP->new->pretty->canonical->encode($config);
+    close $fh;
+}
+
+sub load_config {
+    open my $fh, '<', $config_file or die "Unable to read config: $!";
+    local $/;
+    my $json = <$fh>;
+    close $fh;
+    my $decoded = eval { decode_json($json) };
+    return $decoded && ref $decoded eq 'HASH' ? $decoded : {};
+}
+
+sub resolve_nav_url {
+    my ($config) = @_;
+    my $nav = $config->{navigation} || {};
+    my $vt = $nav->{vesseltracker} || {};
+    return $vt->{url} if $vt->{url};
+    my $imo = trim($vt->{imo} // '');
+    my $ship_name = trim($vt->{shipName} // '');
+    return '' unless $imo && $ship_name;
+    return 'https://www.vesseltracker.com/en/Ships/' . slugify_ship_name($ship_name) . '-' . $imo . '.html';
+}
+
+sub slugify_ship_name {
+    my ($ship_name) = @_;
+    $ship_name = lc $ship_name;
+    $ship_name =~ s/[^a-z0-9]+/-/g;
+    $ship_name =~ s/^-+|-+$//g;
+    my @parts = grep { length } split /-+/, $ship_name;
+    @parts = map { ucfirst $_ } @parts;
+    return join('-', @parts);
+}
+
 sub build_status {
     my ($state) = @_;
-    my $loop = navigation_loop_sample(time);
-    $state->{telemetry}{rxDbm} = sprintf('%.1f', -62.4 + 0.7 * $loop->{sea});
-    $state->{telemetry}{txDbm} = sprintf('%.1f', 11.1 + 0.5 * $loop->{swell});
-    $state->{telemetry}{cNo} = sprintf('%.1f', 14.7 + 0.4 * $loop->{sea});
-    $state->{telemetry}{heading} = $loop->{heading};
-    $state->{telemetry}{pitch} = sprintf('%.1f', $loop->{pitch});
-    $state->{telemetry}{roll} = sprintf('%.1f', $loop->{roll});
-    $state->{telemetry}{gps} = format_gps($loop->{lat}, $loop->{lon});
-    $state->{telemetry}{packets} += 320 + int(280 * (1 + $loop->{sea}));
+    my $nav = resolve_navigation($state, time);
+    $state->{telemetry}{rxDbm} = sprintf('%.1f', -62.4 + 0.7 * $nav->{sea});
+    $state->{telemetry}{txDbm} = sprintf('%.1f', 11.1 + 0.5 * $nav->{swell});
+    $state->{telemetry}{cNo} = sprintf('%.1f', 14.7 + 0.4 * $nav->{sea});
+    $state->{telemetry}{heading} = $nav->{heading};
+    $state->{telemetry}{pitch} = sprintf('%.1f', $nav->{pitch});
+    $state->{telemetry}{roll} = sprintf('%.1f', $nav->{roll});
+    $state->{telemetry}{gps} = format_gps($nav->{lat}, $nav->{lon});
+    $state->{telemetry}{packets} += 320 + int(280 * (1 + $nav->{sea}));
     $state->{profile}{uptimeHours} += 1 if int(time / 3600) > $state->{profile}{uptimeHours};
     return $state->{telemetry};
+}
+
+sub resolve_navigation {
+    my ($state, $epoch) = @_;
+    my $loop = navigation_loop_sample($epoch);
+
+    if ($nav_source eq 'scrape' && $nav_url) {
+        my $cached = $state->{upstream_nav} // {};
+        my $fresh = ($cached->{refreshedEpoch} // 0) + $nav_refresh > $epoch;
+        if (!$fresh) {
+            my $scraped = scrape_vesseltracker($nav_url);
+            if ($scraped->{ok}) {
+                $cached = {
+                    source => 'scrape',
+                    url => $nav_url,
+                    refreshedAt => iso_now(),
+                    refreshedEpoch => $epoch,
+                    vesselName => $scraped->{vesselName} // '',
+                    status => 'live',
+                    %$scraped,
+                };
+                $state->{upstream_nav} = $cached;
+            } else {
+                $cached->{status} = 'fallback';
+                $cached->{error} = $scraped->{error};
+                $state->{upstream_nav} = $cached;
+            }
+        }
+
+        if (($state->{upstream_nav}{heading} // '') ne '') {
+            my $heading = $state->{upstream_nav}{heading};
+            my $speed = $state->{upstream_nav}{speedKnots};
+            my $motion = motion_from_heading($heading, $speed // 0, $epoch);
+            return {
+                %$loop,
+                heading => sprintf('%.0f', $heading),
+                lat => $motion->{lat},
+                lon => $motion->{lon},
+                pitch => $motion->{pitch},
+                roll => $motion->{roll},
+                sea => $motion->{sea},
+                swell => $motion->{swell},
+            };
+        }
+    }
+
+    $state->{upstream_nav} = {
+        source => 'honeypot',
+        url => '',
+        refreshedAt => iso_now(),
+        refreshedEpoch => $epoch,
+        vesselName => '',
+        status => 'mock',
+    } if !exists $state->{upstream_nav} || ($nav_source ne 'scrape');
+
+    return $loop;
 }
 
 sub navigation_loop_sample {
@@ -328,6 +511,117 @@ sub navigation_loop_sample {
         sea => $sea,
         swell => $swell,
     };
+}
+
+sub motion_from_heading {
+    my ($heading, $speed_knots, $epoch) = @_;
+    my $theta = 2 * 3.14159265358979 * (($epoch % 300) / 300);
+    my $distance_scale = ($speed_knots || 7.0) / 800;
+    my $radians = $heading * 3.14159265358979 / 180;
+    my $base_lat = 59.4540;
+    my $base_lon = 24.7580;
+    return {
+        lat => $base_lat + cos($radians) * $distance_scale + 0.0016 * sin($theta),
+        lon => $base_lon + sin($radians) * $distance_scale * 1.8 + 0.0020 * cos($theta),
+        pitch => 1.2 + 0.5 * sin(2 * $theta + 0.3),
+        roll => 0.9 + 0.8 * sin($theta - 0.5),
+        sea => sin($theta - 0.35),
+        swell => sin(2 * $theta + 0.4),
+    };
+}
+
+sub scrape_vesseltracker {
+    my ($url) = @_;
+    return { ok => 0, error => 'Unsupported source URL' }
+        unless $url =~ m{^https://www\.vesseltracker\.com/}i;
+
+    my $html = '';
+    my $pid = open my $fh, '-|', 'curl', '-s', '-L', '-A', 'Mozilla/5.0', $url;
+    return { ok => 0, error => 'Unable to start curl' } unless $pid;
+    {
+        local $/;
+        $html = <$fh> // '';
+    }
+    close $fh;
+    return { ok => 0, error => 'Empty response' } unless length $html;
+
+    my %fields;
+    while ($html =~ m{<div class="col-xs-5 key">([^<]+)</div>\s*<div class="col-xs-7 value">(.*?)</div>}gsi) {
+        my $key = normalize_html_text($1);
+        my $value = normalize_html_text($2);
+        $fields{$key} = $value;
+    }
+
+    my $title = '';
+    if ($html =~ m{<h1>([^<]+)</h1>}i) {
+        $title = normalize_html_text($1);
+    }
+
+    my ($course_deg, $course_speed) = parse_angle_pair($fields{'Course:'} // '');
+    my ($heading_deg, $heading_speed) = parse_angle_pair($fields{'Heading:'} // '');
+    my $speed_knots = first_number($fields{'Speed:'} // '');
+    $speed_knots = $heading_speed if !defined $speed_knots && defined $heading_speed;
+    $speed_knots = $course_speed if !defined $speed_knots && defined $course_speed;
+
+    my $heading = defined $heading_deg ? $heading_deg : $course_deg;
+    return { ok => 0, error => 'Heading unavailable on source page' } unless defined $heading;
+
+    return {
+        ok => 1,
+        vesselName => $title,
+        heading => $heading,
+        course => $course_deg,
+        speedKnots => $speed_knots,
+        destination => $fields{'Destination:'} // '',
+        eta => $fields{'ETA:'} // '',
+    };
+}
+
+sub normalize_html_text {
+    my ($html) = @_;
+    $html //= '';
+    $html =~ s/<script\b[^>]*>.*?<\/script>//gis;
+    $html =~ s/<style\b[^>]*>.*?<\/style>//gis;
+    $html =~ s/<[^>]+>/ /g;
+    $html = decode_basic_entities($html);
+    $html =~ s/\x{a0}/ /g;
+    $html =~ s/\s+/ /g;
+    $html =~ s/^\s+|\s+$//g;
+    return $html;
+}
+
+sub decode_basic_entities {
+    my ($text) = @_;
+    return '' unless defined $text;
+    $text =~ s/&deg;/ deg/gi;
+    $text =~ s/&nbsp;/ /gi;
+    $text =~ s/&amp;/&/gi;
+    $text =~ s/&quot;/"/gi;
+    $text =~ s/&#39;/'/gi;
+    $text =~ s/&lt;/</gi;
+    $text =~ s/&gt;/>/gi;
+    $text =~ s/&#(\d+);/chr($1)/eg;
+    $text =~ s/&#x([0-9a-fA-F]+);/chr(hex($1))/eg;
+    return $text;
+}
+
+sub parse_angle_pair {
+    my ($value) = @_;
+    return unless $value;
+    if ($value =~ /([0-9]+(?:\.[0-9]+)?)\s*deg?\s*\/\s*([0-9]+(?:\.[0-9]+)?)/i) {
+        return ($1 + 0, $2 + 0);
+    }
+    if ($value =~ /([0-9]+(?:\.[0-9]+)?)/) {
+        return ($1 + 0, undef);
+    }
+    return;
+}
+
+sub first_number {
+    my ($value) = @_;
+    return undef unless $value;
+    return $1 + 0 if $value =~ /([0-9]+(?:\.[0-9]+)?)/;
+    return undef;
 }
 
 sub atan2_deg {

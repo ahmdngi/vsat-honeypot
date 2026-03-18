@@ -4,6 +4,8 @@ const state = {
   status: null,
   profile: null,
   terminals: [],
+  configuredVessel: null,
+  upstreamNav: null,
   wan: null,
   logs: { events: [], commands: [] },
   currentView: "overview",
@@ -41,7 +43,12 @@ const els = {
   terminalBody: document.getElementById("terminal-body"),
   trackingMode: document.getElementById("trackingMode"),
   txDbm: document.getElementById("txDbm"),
+  uploadFile: document.getElementById("upload-file"),
+  uploadForm: document.getElementById("upload-form"),
+  uploadStatus: document.getElementById("upload-status"),
   uptime: document.getElementById("uptime"),
+  vesselImo: document.getElementById("vessel-imo"),
+  vesselName: document.getElementById("vessel-name"),
 };
 
 document.querySelectorAll(".nav-link").forEach((button) => {
@@ -60,7 +67,7 @@ els.loginForm.addEventListener("submit", async (event) => {
   });
 
   if (!response.ok) {
-    els.loginStatus.textContent = "Unable to establish session.";
+    els.loginStatus.textContent = "Login failed. Use admin / 1234.";
     return;
   }
 
@@ -132,6 +139,37 @@ els.consoleForm.addEventListener("submit", async (event) => {
   await refresh();
 });
 
+els.uploadForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  els.uploadStatus.classList.remove("success", "error");
+  const file = els.uploadFile.files?.[0];
+  if (!file) {
+    els.uploadStatus.textContent = "Select a package file first.";
+    els.uploadStatus.classList.add("error");
+    return;
+  }
+
+  const response = await fetchJson("/api/upload", {
+    method: "POST",
+    body: JSON.stringify({
+      filename: file.name,
+      size: file.size,
+      mime: file.type || "application/octet-stream",
+    }),
+  });
+
+  els.uploadStatus.textContent = response.ok
+    ? response.message
+    : "Authentication file upload failed.";
+  els.uploadStatus.classList.add(response.ok ? "success" : "error");
+
+  if (response.ok) {
+    els.uploadFile.value = "";
+  }
+
+  await refresh();
+});
+
 function switchView(view) {
   state.currentView = view;
   document.querySelectorAll(".nav-link").forEach((button) => {
@@ -174,12 +212,17 @@ async function refresh() {
   state.status = response.status;
   state.profile = response.profile;
   state.terminals = response.terminals;
+  state.configuredVessel = response.configuredVessel;
+  state.upstreamNav = response.upstreamNav;
   state.wan = response.wan;
   state.logs = response.logs;
   render();
 }
 
 function render() {
+  const scrapedName = state.upstreamNav?.status === "live" ? state.upstreamNav.vesselName : "";
+  els.vesselName.textContent = scrapedName || "Honeypot";
+  els.vesselImo.textContent = `IMO: ${state.configuredVessel?.imo || "--"}`;
   els.accessMode.textContent = state.authenticated ? `Operator: ${state.operator}` : "Guest";
   els.logoutButton.hidden = !state.authenticated;
   els.loginCard.classList.toggle("collapsed", state.authenticated);

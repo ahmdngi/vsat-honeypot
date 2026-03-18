@@ -12,7 +12,8 @@
         <div class="brand">
           <div>
             <p class="eyebrow">Embedded Web Interface</p>
-            <h1>Marine VSAT Terminal</h1>
+            <h1 id="vessel-name">Honeypot</h1>
+            <p class="brand-subtitle mono" id="vessel-imo">IMO: --</p>
           </div>
         </div>
         <nav class="nav">
@@ -72,9 +73,16 @@
               Password
               <input type="password" name="password" autocomplete="current-password" placeholder="********">
             </label>
-            <button type="submit" class="primary-button">Open Session</button>
+            <button type="submit" class="primary-button">Login</button>
           </form>
-          <p class="form-hint" id="login-status">Read-only telemetry is visible without an authenticated session.</p>
+          <form id="upload-form" class="console-form">
+            <label>
+              Authentication File
+              <input id="upload-file" type="file">
+            </label>
+            <button type="submit" class="primary-button">Upload Authentication File</button>
+          </form>
+          <p class="form-hint upload-feedback" id="upload-status">Authentication package upload</p>
         </section>
 
         <section class="panel-grid view active" data-view-panel="overview">
@@ -250,7 +258,7 @@
               <input id="console-command" type="text" placeholder="diag show rf-status">
               <button type="submit" class="primary-button">Run</button>
             </form>
-            <pre class="console-output" id="console-output">console ready: decoy execution mode
+            <pre class="console-output" id="console-output">console ready: execution mode
 </pre>
             <table class="data-table compact">
               <thead>
@@ -264,6 +272,7 @@
               <tbody id="command-body"></tbody>
             </table>
           </article>
+
         </section>
       </main>
     </div>

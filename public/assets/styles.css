@@ -61,6 +61,12 @@ select {
   font-size: 18px;
 }
 
+.brand-subtitle {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .eyebrow {
   margin: 0 0 6px;
   text-transform: uppercase;
@@ -115,6 +121,25 @@ select {
 .meta-label,
 .form-hint {
   color: var(--muted);
+}
+
+.upload-feedback {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #c7d0d8;
+  background: #f6f8fa;
+}
+
+.upload-feedback.success {
+  border-color: #8eb49a;
+  background: #edf8f0;
+  color: #2f6840;
+}
+
+.upload-feedback.error {
+  border-color: #d6a0a0;
+  background: #fff1f1;
+  color: #8b3838;
 }
 
 .mono,
