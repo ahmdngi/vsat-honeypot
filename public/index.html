@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Marine VSAT Terminal Console</title>
+    <title>SAILOR 900 VSAT Ka - Installation Manager</title>
     <link rel="stylesheet" href="/assets/styles.css">
   </head>
   <body>
@@ -11,33 +11,39 @@
       <aside class="sidebar">
         <div class="brand">
           <div>
-            <p class="eyebrow">Embedded Web Interface</p>
-            <h1 id="vessel-name">Honeypot</h1>
-            <p class="brand-subtitle mono" id="vessel-imo">IMO: --</p>
+            <p class="eyebrow">Cobham SATCOM</p>
+            <h1 id="vessel-name">SAILOR 900 VSAT Ka</h1>
+            <p class="brand-subtitle mono" id="vessel-imo">SN: S900-4821-0391</p>
           </div>
         </div>
         <nav class="nav">
-          <button class="nav-link active" data-view="overview">Overview</button>
+          <button class="nav-link active" data-view="overview">Status</button>
           <button class="nav-link" data-view="antenna">Antenna</button>
           <button class="nav-link" data-view="network">Network</button>
-          <button class="nav-link" data-view="events">Events</button>
-          <button class="nav-link" data-view="console">Console</button>
+          <button class="nav-link" data-view="events">Alarms</button>
+          <button class="nav-link" data-view="console">Diagnostics</button>
         </nav>
+        <section class="meta-card vessel-card">
+          <p class="meta-label">Vessel Name</p>
+          <p class="mono" id="configured-vessel-name">Megastar</p>
+          <p class="meta-label">IMO</p>
+          <p class="mono" id="configured-vessel-imo">9773064</p>
+        </section>
         <section class="meta-card">
-          <p class="meta-label">Management Endpoint</p>
-          <p class="mono">http://192.168.0.1</p>
-          <p class="meta-label">Access Mode</p>
+          <p class="meta-label">Management IP</p>
+          <p class="mono" id="management-ip">192.168.1.1</p>
+          <p class="meta-label">Access Level</p>
           <p class="mono" id="access-mode">Guest</p>
-          <p class="meta-label">Software</p>
-          <p class="mono">Terminal UI 2.4.18</p>
+          <p class="meta-label">Software Version</p>
+          <p class="mono" id="software-version">v2.4.3</p>
         </section>
       </aside>
 
       <main class="main">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Ka-band Satellite Terminal</p>
-            <h2 id="page-title">Terminal Overview</h2>
+            <p class="eyebrow">Ka-band Maritime VSAT</p>
+            <h2 id="page-title">Installation Manager</h2>
           </div>
           <div class="topbar-actions">
             <div class="clock" id="clock"></div>
@@ -56,18 +62,18 @@
         </section>
 
         <section class="connection-banner" id="connection-banner" hidden>
-          Telemetry unavailable. Start the local server and open this UI via `http://127.0.0.1:8080`.
+          Unable to connect to SAILOR 900. Verify network connection and start server at 192.168.1.1.
         </section>
 
         <section class="login-card" id="login-card">
           <div>
             <p class="eyebrow">Operator Login</p>
-            <h3>Authenticate to modify settings</h3>
+            <h3>Authentication Required</h3>
           </div>
           <form id="login-form">
             <label>
               Username
-              <input type="text" name="username" autocomplete="username" placeholder="operator">
+              <input type="text" name="username" autocomplete="username" placeholder="admin">
             </label>
             <label>
               Password
@@ -75,24 +81,25 @@
             </label>
             <button type="submit" class="primary-button">Login</button>
           </form>
+          <p class="form-hint" id="login-status">Use operator credentials to unlock configuration controls.</p>
           <form id="upload-form" class="console-form">
             <label>
-              Authentication File
+              License / Config File
               <input id="upload-file" type="file">
             </label>
-            <button type="submit" class="primary-button">Upload Authentication File</button>
+            <button type="submit" class="primary-button">Upload File</button>
           </form>
-          <p class="form-hint upload-feedback" id="upload-status">Authentication package upload</p>
+          <p class="form-hint upload-feedback" id="upload-status">Configuration upload interface</p>
         </section>
 
         <section class="panel-grid view active" data-view-panel="overview">
           <article class="panel hero-panel">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Status Summary</p>
+                <p class="eyebrow">System Status</p>
                 <h3 id="carrier-state">Tracking</h3>
               </div>
-              <span class="status-pill live">LIVE</span>
+              <span class="status-pill live">ONLINE</span>
             </div>
             <div class="kpi-grid">
               <div class="kpi">
@@ -117,12 +124,12 @@
           <article class="panel">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Vessel Attitude</p>
-                <h3>Navigation Feed</h3>
+                <p class="eyebrow">Antenna Position</p>
+                <h3>Pointing Data</h3>
               </div>
             </div>
             <dl class="stat-list">
-              <div><dt>GPS</dt><dd id="gps">-</dd></div>
+              <div><dt>GPS Position</dt><dd id="gps">-</dd></div>
               <div><dt>Heading</dt><dd id="heading">-</dd></div>
               <div><dt>Pitch</dt><dd id="pitch">-</dd></div>
               <div><dt>Roll</dt><dd id="roll">-</dd></div>
@@ -132,14 +139,14 @@
           <article class="panel">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Active Profile</p>
+                <p class="eyebrow">Satellite Profile</p>
                 <h3 id="profileName">-</h3>
               </div>
             </div>
             <dl class="stat-list">
               <div><dt>Satellite</dt><dd id="satelliteName">-</dd></div>
-              <div><dt>Tracking</dt><dd id="trackingMode">-</dd></div>
-              <div><dt>Firmware</dt><dd id="firmware">-</dd></div>
+              <div><dt>Tracking Mode</dt><dd id="trackingMode">-</dd></div>
+              <div><dt>Software</dt><dd id="firmware">-</dd></div>
               <div><dt>Uptime</dt><dd id="uptime">-</dd></div>
             </dl>
           </article>
@@ -147,14 +154,14 @@
           <article class="panel wide">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Terminal Modules</p>
-                <h3>Subsystem Health</h3>
+                <p class="eyebrow">Unit Status</p>
+                <h3>Hardware Modules</h3>
               </div>
             </div>
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Module</th>
+                  <th>Unit</th>
                   <th>Status</th>
                   <th>Temp</th>
                   <th>Azimuth</th>
@@ -170,8 +177,8 @@
           <article class="panel wide">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Antenna Profile</p>
-                <h3>Tracking Parameters</h3>
+                <p class="eyebrow">Antenna Configuration</p>
+                <h3>Pointing Setup</h3>
               </div>
             </div>
             <form id="antenna-form" class="config-form">
@@ -180,20 +187,21 @@
                 <input name="profileName" type="text">
               </label>
               <label>
-                Satellite Name
+                Satellite
                 <input name="satelliteName" type="text">
               </label>
               <label>
                 Tracking Mode
                 <select name="trackingMode">
-                  <option>Auto</option>
+                  <option>Steptrack</option>
+                  <option>Program Track</option>
+                  <option>Search Track</option>
                   <option>Manual</option>
-                  <option>Service</option>
                 </select>
               </label>
-              <button type="submit" class="primary-button">Apply Antenna Profile</button>
+              <button type="submit" class="primary-button">Apply Settings</button>
             </form>
-            <p class="form-hint" id="antenna-status">Profile writes are simulated in the decoy state store.</p>
+            <p class="form-hint" id="antenna-status">Changes are applied to antenna controller.</p>
           </article>
         </section>
 
@@ -201,26 +209,26 @@
           <article class="panel wide">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">WAN Settings</p>
-                <h3>Management Network</h3>
+                <p class="eyebrow">Network Configuration</p>
+                <h3>LAN Settings</h3>
               </div>
             </div>
             <form id="network-form" class="config-form">
               <label>
-                Target IP
+                IP Address
                 <input name="targetIp" type="text">
               </label>
               <label>
-                Netmask
+                Subnet Mask
                 <input name="mask" type="text">
               </label>
               <label>
-                Gateway
+                Default Gateway
                 <input name="gateway" type="text">
               </label>
               <button type="submit" class="primary-button">Apply Network Settings</button>
             </form>
-            <p class="form-hint" id="network-status">Writes are accepted and logged, but they do not touch any real device.</p>
+            <p class="form-hint" id="network-status">Network configuration updated successfully.</p>
           </article>
         </section>
 
@@ -228,15 +236,15 @@
           <article class="panel wide">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Alarm Register</p>
-                <h3>Recent Events</h3>
+                <p class="eyebrow">Event Log</p>
+                <h3>Alarm History</h3>
               </div>
             </div>
             <table class="data-table">
               <thead>
                 <tr>
                   <th>Timestamp</th>
-                  <th>Level</th>
+                  <th>Severity</th>
                   <th>Code</th>
                   <th>Message</th>
                 </tr>
@@ -250,23 +258,24 @@
           <article class="panel wide">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Maintenance Shell</p>
-                <h3>Operator Console</h3>
+                <p class="eyebrow">Service Interface</p>
+                <h3>Diagnostic Console</h3>
               </div>
             </div>
             <form id="console-form" class="console-form">
-              <input id="console-command" type="text" placeholder="diag show rf-status">
-              <button type="submit" class="primary-button">Run</button>
+              <input id="console-command" type="text" placeholder="ant status">
+              <button type="submit" class="primary-button">Execute</button>
             </form>
-            <pre class="console-output" id="console-output">console ready: execution mode
+            <pre class="console-output" id="console-output">SAILOR 900 VSAT Ka Diagnostic Shell
+Ready for command input.
 </pre>
             <table class="data-table compact">
               <thead>
                 <tr>
                   <th>Timestamp</th>
-                  <th>Operator</th>
-                  <th>Action</th>
-                  <th>Detail</th>
+                  <th>User</th>
+                  <th>Command</th>
+                  <th>Result</th>
                 </tr>
               </thead>
               <tbody id="command-body"></tbody>

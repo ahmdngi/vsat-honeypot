@@ -20,6 +20,8 @@ const els = {
   carrierState: document.getElementById("carrier-state"),
   clock: document.getElementById("clock"),
   commandBody: document.getElementById("command-body"),
+  configuredVesselImo: document.getElementById("configured-vessel-imo"),
+  configuredVesselName: document.getElementById("configured-vessel-name"),
   connectionBanner: document.getElementById("connection-banner"),
   consoleCommand: document.getElementById("console-command"),
   consoleForm: document.getElementById("console-form"),
@@ -31,6 +33,7 @@ const els = {
   loginCard: document.getElementById("login-card"),
   loginForm: document.getElementById("login-form"),
   loginStatus: document.getElementById("login-status"),
+  managementIp: document.getElementById("management-ip"),
   logoutButton: document.getElementById("logout-button"),
   networkForm: document.getElementById("network-form"),
   networkStatus: document.getElementById("network-status"),
@@ -40,6 +43,7 @@ const els = {
   roll: document.getElementById("roll"),
   rxDbm: document.getElementById("rxDbm"),
   satelliteName: document.getElementById("satelliteName"),
+  softwareVersion: document.getElementById("software-version"),
   terminalBody: document.getElementById("terminal-body"),
   trackingMode: document.getElementById("trackingMode"),
   txDbm: document.getElementById("txDbm"),
@@ -67,17 +71,17 @@ els.loginForm.addEventListener("submit", async (event) => {
   });
 
   if (!response.ok) {
-    els.loginStatus.textContent = "Login failed. Use admin / 1234.";
+    els.loginStatus.textContent = "Invalid credentials. Try admin/1234 or service/service.";
     return;
   }
 
-  els.loginStatus.textContent = "Operator session opened.";
+  els.loginStatus.textContent = "Login successful. Operator privileges granted.";
   await refresh();
 });
 
 els.logoutButton.addEventListener("click", async () => {
   await fetchJson("/api/logout", { method: "POST" });
-  els.loginStatus.textContent = "Session closed. Read-only mode restored.";
+  els.loginStatus.textContent = "Logged out. Guest access restored.";
   await refresh();
 });
 
@@ -94,8 +98,8 @@ els.antennaForm.addEventListener("submit", async (event) => {
   });
 
   els.antennaStatus.textContent = response.ok
-    ? "Antenna profile stored in decoy state."
-    : "Authentication required for profile writes.";
+    ? "Antenna configuration updated."
+    : "Login required for configuration changes.";
   await refresh();
 });
 
@@ -112,8 +116,8 @@ els.networkForm.addEventListener("submit", async (event) => {
   });
 
   els.networkStatus.textContent = response.ok
-    ? "Network settings accepted and logged."
-    : "Authentication required for network writes.";
+    ? "LAN settings applied successfully."
+    : "Login required for network configuration.";
   await refresh();
 });
 
@@ -179,18 +183,18 @@ function switchView(view) {
     panel.classList.toggle("active", panel.dataset.viewPanel === view);
   });
   els.pageTitle.textContent = ({
-    overview: "Terminal Overview",
+    overview: "Installation Manager",
     antenna: "Antenna Control",
-    network: "Network Services",
-    events: "Alarm Register",
-    console: "Maintenance Console",
+    network: "Network Settings",
+    events: "Alarm Log",
+    console: "Diagnostics",
   })[view];
   document.getElementById("breadcrumb-view").textContent = ({
-    overview: "Overview",
+    overview: "Status",
     antenna: "Antenna",
     network: "Network",
-    events: "Events",
-    console: "Console",
+    events: "Alarms",
+    console: "Diagnostics",
   })[view];
 }
 
@@ -221,9 +225,20 @@ async function refresh() {
 
 function render() {
   const scrapedName = state.upstreamNav?.status === "live" ? state.upstreamNav.vesselName : "";
-  els.vesselName.textContent = scrapedName || "Honeypot";
-  els.vesselImo.textContent = `IMO: ${state.configuredVessel?.imo || "--"}`;
+  const configuredName = state.configuredVessel?.shipName || "";
+  const configuredImo = state.configuredVessel?.imo || "";
+  const vesselName = scrapedName || configuredName;
+  const serialNumber = state.profile?.serialNumber || "S900-4821-0391";
+  els.vesselName.textContent = "SAILOR 900 VSAT Ka";
+  els.vesselImo.textContent = `SN: ${serialNumber}`;
+  els.configuredVesselName.textContent = vesselName || "Unavailable";
+  els.configuredVesselImo.textContent = configuredImo || "Unavailable";
   els.accessMode.textContent = state.authenticated ? `Operator: ${state.operator}` : "Guest";
+  els.loginStatus.textContent = state.authenticated
+    ? "Operator session active. Configuration controls are enabled."
+    : "Use operator credentials to unlock configuration controls.";
+  els.managementIp.textContent = state.wan?.targetIp || "192.168.1.1";
+  els.softwareVersion.textContent = state.profile?.firmware || "v2.4.3";
   els.logoutButton.hidden = !state.authenticated;
   els.loginCard.classList.toggle("collapsed", state.authenticated);
   els.loginCard.style.display = state.authenticated ? "none" : "grid";
@@ -256,9 +271,9 @@ function render() {
     <tr>
       <td>${escapeHtml(terminal.name)}</td>
       <td>${escapeHtml(terminal.status)}</td>
-      <td>${escapeHtml(String(terminal.temperature))} C</td>
-      <td>${escapeHtml(String(terminal.azimuth))} deg</td>
-      <td>${escapeHtml(String(terminal.elevation))} deg</td>
+      <td>${escapeHtml(String(terminal.temperature))} °C</td>
+      <td>${escapeHtml(String(terminal.azimuth))}°</td>
+      <td>${escapeHtml(String(terminal.elevation))}°</td>
     </tr>
   `).join("");
 
@@ -282,7 +297,7 @@ function render() {
 }
 
 function escapeHtml(value) {
-  return value
+  return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -316,8 +331,8 @@ function updateClock() {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    timeZoneName: "short",
-  });
+    timeZone: "UTC",
+  }) + " UTC";
 }
 
 updateClock();

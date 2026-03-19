@@ -1,9 +1,20 @@
 {
   "server": {
     "bind": "127.0.0.1",
-    "port": 8080
+    "port": 8080,
+    "trustProxyHeaders": false,
+    "rateLimit": {
+      "windowSeconds": 60,
+      "maxRequestsPerWindow": 180
+    }
   },
   "navigation": {
-    "mode": "honeypot"
+    "mode": "scrape",
+    "refreshSeconds": 5,
+    "vesseltracker": {
+      "shipName": "Megastar",
+      "imo": "9773064",
+      "url": "https://www.vesseltracker.com/en/Ships/Megastar-9773064.html"
+    }
   }
 }

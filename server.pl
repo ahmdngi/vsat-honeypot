@@ -87,6 +87,7 @@ sub handle_client {
     my $state = load_state();
     my $now = iso_now();
     my $user = session_user($state, $session_id);
+    my $request_meta = extract_request_meta($uri, $method, $body);
 
     if (!allow_request($remote)) {
         log_line($request_log, encode_json({
@@ -102,6 +103,7 @@ sub handle_client {
             host => ($headers{'host'} // ''),
             content_length => ($headers{'content-length'} // 0),
             forwarded_for => ($headers{'x-forwarded-for'} // ''),
+            %{$request_meta},
             outcome => 'rate_limited',
         }));
         send_plain($client, 429, "Too many requests\n");
@@ -121,6 +123,7 @@ sub handle_client {
         host => ($headers{'host'} // ''),
         content_length => ($headers{'content-length'} // 0),
         forwarded_for => ($headers{'x-forwarded-for'} // ''),
+        %{$request_meta},
         outcome => 'accepted',
     }));
 
@@ -129,6 +132,7 @@ sub handle_client {
         my $username = trim($payload->{username} // '');
         my $password = $payload->{password} // '';
         my $accepted = ($username eq 'admin' && $password eq '1234') ? 1 : 0;
+        $accepted = ($username eq 'service' && $password eq 'service') ? 1 : 0 unless $accepted;
         my $session_for_log = '';
         my @headers;
 
@@ -335,44 +339,52 @@ sub handle_client {
 sub bootstrap_state {
     my $state = {
         profile => {
-            profileName => 'North Atlantic Backup',
-            satelliteName => 'KA-NORDIC-17',
-            trackingMode => 'Auto',
-            firmware => '2.4.18-hb',
-            uptimeHours => 4182,
+            profileName => 'INTELSAT-907',
+            satelliteName => 'IS-907 @ 332.5E',
+            trackingMode => 'Steptrack',
+            firmware => 'v2.4.3',
+            uptimeHours => 2147,
+            serialNumber => 'S900-4821-0391',
+            modemType => 'SAILOR 900 VSAT Ka',
         },
         wan => {
-            targetIp => '172.18.44.15',
+            targetIp => '192.168.1.1',
             mask => '255.255.255.0',
-            gateway => '172.18.44.1',
-            qosProfile => 'Fleet-Priority-2',
+            gateway => '192.168.1.254',
+            qosProfile => 'FleetBroadband',
+            dnsPrimary => '8.8.8.8',
+            dnsSecondary => '8.8.4.4',
         },
         terminals => [
             {
-                name => 'Above Deck Unit',
+                name => 'Above Deck Unit (ADU)',
                 status => 'Tracking',
-                temperature => 41,
+                temperature => 38,
                 azimuth => 182.4,
                 elevation => 38.9,
+                polarization => 'RHCP',
             },
             {
-                name => 'Below Deck Unit',
-                status => 'Operational',
-                temperature => 35,
+                name => 'Below Deck Unit (BDU)',
+                status => 'Online',
+                temperature => 32,
                 azimuth => 0,
                 elevation => 0,
+                polarization => 'N/A',
             }
         ],
         telemetry => {
-            rxDbm => -62.3,
-            txDbm => 11.2,
-            cNo => 14.8,
-            ber => '2.4e-6',
+            rxDbm => -58.3,
+            txDbm => 13.2,
+            cNo => 15.8,
+            ber => '1.2e-7',
             gps => '59.4370N / 24.7536E',
             heading => 71,
             pitch => 1.3,
             roll => 0.8,
             packets => 17424011,
+            agc => 72,
+            spectralInversion => 'Normal',
         },
         upstream_nav => {
             source => $nav_source,
@@ -382,12 +394,12 @@ sub bootstrap_state {
             status => 'mock',
         },
         events => [
-            { ts => iso_now(), level => 'info', code => 'SYS-001', message => 'Decoy modem stack initialized' },
-            { ts => iso_now(), level => 'notice', code => 'NET-084', message => 'WAN carrier synchronized' },
-            { ts => iso_now(), level => 'info', code => 'ANT-045', message => 'Antenna stabilized within target window' },
+            { ts => iso_now(), level => 'info', code => '100', message => 'System startup complete' },
+            { ts => iso_now(), level => 'notice', code => '201', message => 'Carrier lock acquired' },
+            { ts => iso_now(), level => 'info', code => '305', message => 'Antenna pointing optimized' },
         ],
         command_log => [
-            { ts => iso_now(), operator => 'system', action => 'boot-sequence', detail => 'Operational profile restored from persistent store' },
+            { ts => iso_now(), operator => 'system', action => 'init', detail => 'SAILOR 900 VSAT Ka initialized' },
         ],
         sessions => {},
     };
@@ -395,7 +407,23 @@ sub bootstrap_state {
 }
 
 sub bootstrap_config {
-    my $config = {
+    my $config = default_config();
+    open my $fh, '>', $config_file or die "Unable to write config: $!";
+    print {$fh} JSON::PP->new->pretty->canonical->encode($config);
+    close $fh;
+}
+
+sub load_config {
+    open my $fh, '<', $config_file or die "Unable to read config: $!";
+    local $/;
+    my $json = <$fh>;
+    close $fh;
+    my $decoded = eval { decode_json($json) };
+    return merge_defaults(default_config(), $decoded && ref $decoded eq 'HASH' ? $decoded : {});
+}
+
+sub default_config {
+    return {
         server => {
             bind => '127.0.0.1',
             port => 8080,
@@ -415,18 +443,21 @@ sub bootstrap_config {
             },
         },
     };
-    open my $fh, '>', $config_file or die "Unable to write config: $!";
-    print {$fh} JSON::PP->new->pretty->canonical->encode($config);
-    close $fh;
 }
 
-sub load_config {
-    open my $fh, '<', $config_file or die "Unable to read config: $!";
-    local $/;
-    my $json = <$fh>;
-    close $fh;
-    my $decoded = eval { decode_json($json) };
-    return $decoded && ref $decoded eq 'HASH' ? $decoded : {};
+sub merge_defaults {
+    my ($defaults, $overrides) = @_;
+    my %merged = %{$defaults || {}};
+    for my $key (keys %{$overrides || {}}) {
+        my $default_value = $defaults->{$key};
+        my $override_value = $overrides->{$key};
+        if (ref($default_value) eq 'HASH' && ref($override_value) eq 'HASH') {
+            $merged{$key} = merge_defaults($default_value, $override_value);
+        } else {
+            $merged{$key} = $override_value;
+        }
+    }
+    return \%merged;
 }
 
 sub resolve_client_ip {
@@ -753,6 +784,17 @@ sub parse_json_body {
     return $decoded && ref $decoded eq 'HASH' ? $decoded : {};
 }
 
+sub extract_request_meta {
+    my ($uri, $method, $body) = @_;
+    return {} unless $uri eq '/api/upload' && $method eq 'POST';
+    my $payload = parse_json_body($body);
+    return {
+        upload_filename => trim($payload->{filename} // 'unnamed-package.bin'),
+        upload_size => trim($payload->{size} // '0'),
+        upload_mime => trim($payload->{mime} // 'application/octet-stream'),
+    };
+}
+
 sub parse_form {
     my ($value) = @_;
     return {} unless defined $value && length $value;
@@ -852,7 +894,7 @@ sub send_response {
         'X-Robots-Tag: noindex, nofollow, noarchive',
         'X-Frame-Options: DENY',
         'X-Content-Type-Options: nosniff',
-        'Server: VSAT-Decoy/0.1',
+        'Server: Allegro-WebServer/3.2.1',
         "Content-Length: " . length($content),
         @$extra_headers,
         '',

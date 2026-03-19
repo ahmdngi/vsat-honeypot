@@ -1,28 +1,44 @@
-# VSAT Honeybot
+# VSAT Honeypot - SAILOR 900 VSAT Ka Emulation
 
-This repository contains a maritime VSAT administration decoy: a self-contained web UI with synthetic telemetry, fake configuration writes, and request logging intended for controlled honeypot research.
+A maritime VSAT honeypot designed to emulate the Cobham SAILOR 900 VSAT Ka Installation Manager interface for authorized security research and threat intelligence gathering.
 
-It is intentionally inspired by marine terminal dashboards, but it is not a vendor-exact clone and it does not control real hardware.
+**For authorized research purposes only. Deploy in isolated lab environments.**
+
+## Description
+
+This honeypot mimics the SAILOR 900 VSAT Ka terminal web interface, capturing attacker interactions, credentials, and exploration patterns. It is designed to appear authentic to casual scanning and basic fingerprinting attempts.
 
 ## Features
 
-- Read-only dashboard with live-looking RF and vessel telemetry
-- Operator login flow that accepts credentials and stores session attempts in local logs
-- Fake antenna and network configuration pages with persistent simulated state
-- Event log and maintenance console surfaces for interaction capture
+- SAILOR 900 VSAT Ka web interface emulation
+- Simulated RF telemetry and vessel navigation data
+- Login capture with multiple credential sets
+- Fake configuration pages that log all changes
+- Diagnostic console for command capture
+- File upload capture for payload collection
 - Zero-dependency Perl HTTP server
 
-## Run
+## Quick Start
 
 ```sh
+cd vsat
 perl server.pl
 ```
 
-Then open `http://127.0.0.1:8080`.
+Open `http://127.0.0.1:8080`.
 
-## Config File
+## Default Credentials
 
-The server now creates [config/honeypot.json](/home/ahmed/maritime/vsat/config/honeypot.json) automatically on first run.
+The honeypot accepts these credentials (all attempts are logged):
+
+| Username | Password | Access Level |
+|----------|----------|--------------|
+| admin | 1234 | Administrator |
+| service | service | Service |
+
+## Configuration
+
+The server creates `config/honeypot.json` automatically on first run.
 
 Edit these fields:
 
@@ -32,7 +48,7 @@ Edit these fields:
 - `navigation.vesseltracker.imo`: IMO number used to build the Vesseltracker URL
 - `navigation.vesseltracker.url`: optional explicit URL override
 
-Example `honeypot` config:
+Example honeypot config:
 
 ```json
 {
@@ -57,7 +73,7 @@ Example `honeypot` config:
 }
 ```
 
-Example `scrape` config:
+Example scrape config:
 
 ```json
 {
@@ -82,37 +98,32 @@ Example `scrape` config:
 }
 ```
 
-Notes for scraper mode:
+## Logs
 
-- It is best-effort and depends on public HTML that may change.
-- Some fields on Vesseltracker are gated for logged-in users, so the decoy falls back to local synthetic GPS and motion when fields are missing.
-- Public scraping may be subject to the website's terms and anti-bot controls.
+- `logs/requests.log` - All HTTP requests with metadata
+- `logs/auth.log` - Authentication attempts and sessions
+- `data/state.json` - Current simulated device state
 
-## Public Deployment Notes
+## Deployment Notes
 
-- Prefer a reverse proxy in front of the app and only enable `server.trustProxyHeaders` when you actually trust that proxy.
-- Keep the dashboard isolated in a VM, VLAN, or lab segment with no path to real management networks.
-- Use host firewall rules to allow only the ports you intend to expose.
-- Request logs now capture socket IP, forwarded IP, host, referer, content length, and outcome to improve triage.
-- A lightweight per-IP rate limiter is enabled from config to reduce noisy scanning and accidental resource exhaustion.
-- This app is an HTTP decoy UI only; do not treat it as a full device emulator.
+- Use behind a reverse proxy for TLS termination
+- Isolate in a DMZ or honeypot network segment
+- Block outbound internet access from the honeypot host
+- Consider using an IP in maritime ASN ranges for realism
 
-## Files
+## OpSec
 
-- `server.pl` serves the UI and stores decoy state in `data/state.json`
-- `config/honeypot.json` controls the nav mode and optional Vesseltracker target
-- `public/` contains the frontend
-- `logs/requests.log` captures inbound requests
-- `logs/auth.log` captures submitted credentials and accepted sessions
+The honeypot returns realistic indicators:
+- Server header: `Allegro-WebServer/3.2.1` (matches real SAILOR devices)
+- Navigation data uses realistic maritime coordinates
+- Firmware version matches known SAILOR releases
+- Serial numbers follow SAILOR naming conventions
 
 ## References
 
-- SAILOR 900 installation manager screen reference: https://www.linksystems-uk.com/wp-content/uploads/support/SAILOR900IM-98-133400-F-var-A-screen.pdf
-- SAILOR 900 VSAT Ka product sheet: https://res.cloudinary.com/cobhamsatcom/image/upload/v1646049818/71_147400_A03_SAILOR_900_VSAT_Ka_web_a8ba6ae647.pdf
-- SAILOR 900 VSAT Ka product page: https://cobham-satcom.com/product/sailor-900-vsat-ka
+- SAILOR 900 VSAT Ka: https://cobham-satcom.com/product/sailor-900-vsat-ka
+- Installation Manager Reference: https://www.linksystems-uk.com/wp-content/uploads/support/SAILOR900IM-98-133400-F-var-A-screen.pdf
 
-## Safety Notes
+## License
 
-- Deploy only inside an isolated lab, sinkhole, or controlled deception environment.
-- Do not expose this on production management networks.
-- The UI accepts writes for research purposes only; all actions remain inside the local decoy state store.
+See LICENSE file.
