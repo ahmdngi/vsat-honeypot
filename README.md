@@ -126,5 +126,4 @@ The honeypot returns realistic indicators:
 
 ## License
 
-See LICENSE file. 
-password 123
+See LICENSE file.
